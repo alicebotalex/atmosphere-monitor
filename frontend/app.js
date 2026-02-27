@@ -452,5 +452,134 @@ async function deleteSensor(id) {
   }
 }
 
+// Network Scan
+let scanResults = [];
+
+document.getElementById('scanNetworkBtn').addEventListener('click', async () => {
+  const scanBtn = document.getElementById('scanNetworkBtn');
+  const progressDiv = document.getElementById('scanProgress');
+  const resultsDiv = document.getElementById('scanResults');
+  const statusText = progressDiv.querySelector('.scan-status');
+  const fillBar = progressDiv.querySelector('.scan-fill');
+  
+  // Reset UI
+  scanBtn.disabled = true;
+  scanBtn.textContent = '🔍 Scanning...';
+  progressDiv.style.display = 'block';
+  resultsDiv.style.display = 'none';
+  fillBar.style.width = '0%';
+  scanResults = [];
+  
+  try {
+    const response = await fetch('/api/scan', {
+      method: 'POST'
+    });
+    
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      
+      const chunk = decoder.decode(value);
+      const lines = chunk.split('\n\n');
+      
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        
+        const data = JSON.parse(line.slice(6));
+        
+        if (data.type === 'progress') {
+          const percent = Math.round((data.scanned / data.total) * 100);
+          fillBar.style.width = percent + '%';
+          statusText.textContent = `Scanning ${data.subnet || 'network'}... ${data.scanned}/${data.total}`;
+        } else if (data.type === 'complete') {
+          scanResults = data.devices;
+          displayScanResults(scanResults);
+          progressDiv.style.display = 'none';
+        } else if (data.type === 'error') {
+          alert('Scan failed: ' + data.error);
+          progressDiv.style.display = 'none';
+        }
+      }
+    }
+  } catch (error) {
+    alert('Scan failed: ' + error.message);
+    progressDiv.style.display = 'none';
+  } finally {
+    scanBtn.disabled = false;
+    scanBtn.textContent = '🔍 Scan Network';
+  }
+});
+
+function displayScanResults(devices) {
+  const resultsDiv = document.getElementById('scanResults');
+  const resultsList = document.getElementById('scanResultsList');
+  
+  if (devices.length === 0) {
+    resultsList.innerHTML = '<p style="color: var(--text-secondary); text-align: center; padding: 1rem;">No Tasmota PMS5003 devices found</p>';
+    resultsDiv.style.display = 'block';
+    return;
+  }
+  
+  resultsList.innerHTML = devices.map((device, index) => {
+    const pmData = device.data;
+    const dataStr = pmData ? `PM2.5: ${pmData['PM2.5'] || 0} µg/m³` : 'No data';
+    
+    return `
+      <div class="scan-result-item" data-index="${index}">
+        <div class="scan-result-info">
+          <div class="scan-result-ip">${device.ip}</div>
+          <div class="scan-result-data">${dataStr}</div>
+        </div>
+        <div class="scan-result-actions">
+          ${device.alreadyAdded 
+            ? '<span class="scan-result-status">Already added</span>'
+            : `
+              <input type="text" placeholder="Sensor name" value="Sensor at ${device.ip}">
+              <button class="btn btn-primary" onclick="addScannedSensor(${index})">Add</button>
+            `
+          }
+        </div>
+      </div>
+    `;
+  }).join('');
+  
+  resultsDiv.style.display = 'block';
+}
+
+async function addScannedSensor(index) {
+  const device = scanResults[index];
+  const itemEl = document.querySelector(`.scan-result-item[data-index="${index}"]`);
+  const nameInput = itemEl.querySelector('input');
+  const name = nameInput.value.trim();
+  
+  if (!name) {
+    alert('Please enter a sensor name');
+    return;
+  }
+  
+  try {
+    const response = await fetch('/api/sensors', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, ip: device.ip })
+    });
+    
+    if (response.ok) {
+      // Update UI to show "Already added"
+      device.alreadyAdded = true;
+      itemEl.querySelector('.scan-result-actions').innerHTML = '<span class="scan-result-status">Already added</span>';
+      renderSensorList();
+    } else {
+      const error = await response.json();
+      alert(error.error || 'Failed to add sensor');
+    }
+  } catch (error) {
+    alert('Failed to add sensor: ' + error.message);
+  }
+}
+
 // Initialize
 connectWebSocket();
