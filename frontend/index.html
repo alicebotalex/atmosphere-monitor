@@ -33,14 +33,36 @@
       <div class="modal-body">
         <h3>Sensors</h3>
         <div id="sensorList" class="sensor-list"></div>
+        
+        <h3 style="margin-top: 2rem;">Add Sensor</h3>
+        <div style="margin-bottom: 1rem;">
+          <button id="scanNetworkBtn" class="btn">🔍 Scan Network</button>
+        </div>
+        
+        <div id="scanProgress" class="scan-progress" style="display: none;">
+          <div class="scan-status"></div>
+          <div class="scan-bar">
+            <div class="scan-fill"></div>
+          </div>
+        </div>
+        
+        <div id="scanResults" class="scan-results" style="display: none;">
+          <h4>Found Devices</h4>
+          <div id="scanResultsList"></div>
+        </div>
+        
         <div class="sensor-form">
           <input type="text" id="sensorName" placeholder="Sensor name (e.g., Living Room)">
           <input type="text" id="sensorIp" placeholder="IP address (e.g., 192.168.1.100)">
-          <button id="addSensorBtn" class="btn btn-primary">Add Sensor</button>
+          <button id="addSensorBtn" class="btn btn-primary">Add Sensor Manually</button>
         </div>
       </div>
     </div>
   </div>
+
+  <footer>
+    Created by <a href="https://alexfogeldesign.com" target="_blank">Alex Fogel Design</a>
+  </footer>
 
   <script src="app.js"></script>
 </body>

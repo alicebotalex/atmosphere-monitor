@@ -4,6 +4,7 @@ const WebSocket = require('ws');
 const path = require('path');
 const db = require('./database');
 const { pollSensors, startPolling, stopPolling } = require('./poller');
+const { scanNetwork } = require('./scanner');
 
 const app = express();
 const server = http.createServer(app);
@@ -127,6 +128,42 @@ app.put('/api/preferences', (req, res) => {
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// Network scan endpoint
+app.post('/api/scan', async (req, res) => {
+  try {
+    // Set headers for Server-Sent Events
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    
+    // Send progress updates
+    const onProgress = (scanned, total, subnet) => {
+      res.write(`data: ${JSON.stringify({ type: 'progress', scanned, total, subnet })}\n\n`);
+    };
+    
+    // Perform the scan
+    const results = await scanNetwork(onProgress);
+    
+    // Get existing sensor IPs for comparison
+    const existingSensors = db.getSensors();
+    const existingIps = new Set(existingSensors.map(s => s.ip));
+    
+    // Mark which devices are already added
+    const devicesWithStatus = results.map(device => ({
+      ...device,
+      alreadyAdded: existingIps.has(device.ip)
+    }));
+    
+    // Send final results
+    res.write(`data: ${JSON.stringify({ type: 'complete', devices: devicesWithStatus })}\n\n`);
+    res.end();
+  } catch (error) {
+    console.error('Scan error:', error);
+    res.write(`data: ${JSON.stringify({ type: 'error', error: error.message })}\n\n`);
+    res.end();
   }
 });
 
