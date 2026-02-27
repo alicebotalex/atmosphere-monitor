@@ -1,0 +1,17 @@
+{
+  "name": "atmosphere-monitor",
+  "version": "1.0.0",
+  "description": "Lightweight Tasmota PMS5003 particle sensor monitoring dashboard",
+  "main": "backend/server.js",
+  "scripts": {
+    "start": "node backend/server.js",
+    "dev": "node backend/server.js"
+  },
+  "keywords": ["tasmota", "pms5003", "air-quality", "monitoring"],
+  "author": "Alice",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "ws": "^8.14.2"
+  }
+}

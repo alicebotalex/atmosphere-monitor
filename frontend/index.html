@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Atmosphere Monitor</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+</head>
+<body>
+  <header>
+    <h1>✨ Atmosphere Monitor</h1>
+    <div class="header-controls">
+      <button id="settingsBtn" class="btn">⚙️ Settings</button>
+    </div>
+  </header>
+
+  <main id="dashboard" class="dashboard">
+    <div class="empty-state">
+      <p>No sensors configured</p>
+      <button id="addFirstSensor" class="btn btn-primary">Add Your First Sensor</button>
+    </div>
+  </main>
+
+  <!-- Settings Modal -->
+  <div id="settingsModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Settings</h2>
+        <button class="close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <h3>Sensors</h3>
+        <div id="sensorList" class="sensor-list"></div>
+        <div class="sensor-form">
+          <input type="text" id="sensorName" placeholder="Sensor name (e.g., Living Room)">
+          <input type="text" id="sensorIp" placeholder="IP address (e.g., 192.168.1.100)">
+          <button id="addSensorBtn" class="btn btn-primary">Add Sensor</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

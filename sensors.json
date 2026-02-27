@@ -1,0 +1,15 @@
+{
+  "sensors": [
+    {
+      "id": 1,
+      "name": "Test Sensor",
+      "ip": "localhost:8080",
+      "created_at": "2026-02-27T21:59:43.653Z"
+    }
+  ],
+  "preferences": {
+    "cardOrder": [],
+    "metricToggles": {}
+  },
+  "nextId": 2
+}
