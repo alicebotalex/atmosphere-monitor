@@ -18,6 +18,18 @@ function getSliderIndexForMinutes(minutes) {
   return idx >= 0 ? idx : 5; // default to 30min if not found
 }
 
+function formatChartTime(timestamp) {
+  const date = new Date(timestamp);
+  const timeWindow = preferences.chartTimeWindow || 60;
+  
+  // Show seconds only for very short time windows (5 min or less)
+  if (timeWindow <= 5) {
+    return date.toLocaleTimeString();
+  } else {
+    return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  }
+}
+
 // Smoothing function - simple moving average
 function smoothData(data, windowSize = 6) {
   if (data.length < windowSize) return data;
@@ -172,7 +184,7 @@ function updateChart(sensorId, data, timestamp) {
   const chartDataset = chartData[sensorId];
   
   // Add new data point
-  const time = new Date(timestamp).toLocaleTimeString();
+  const time = formatChartTime(timestamp);
   chartDataset.labels.push(time);
   chartDataset.timestamps.push(timestamp);
   chartDataset.PM1.push(data.PM1 || 0);
@@ -535,7 +547,13 @@ function refreshChartsTimeWindow() {
         }
       }
       
-      const filteredLabels = dataset.labels.slice(startIndex);
+      // Regenerate labels with current time format (seconds shown only for short windows)
+      const filteredTimestamps = dataset.timestamps.slice(startIndex);
+      const filteredLabels = filteredTimestamps.map(ts => formatChartTime(ts));
+      
+      // Also update stored labels for consistency
+      dataset.labels = dataset.timestamps.map(ts => formatChartTime(ts));
+      
       chart.data.labels = filteredLabels;
       chart.data.datasets.forEach(ds => {
         const rawData = dataset[ds.label].slice(startIndex);
