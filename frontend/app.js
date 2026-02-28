@@ -39,9 +39,10 @@ function formatChartTime(timestamp) {
 // LocalStorage functions for data persistence
 function saveChartData(sensorId, chart) {
   try {
+    // Keep last 4 hours worth of data (at 5 sec intervals = 2880 points)
     const data = chart.data.datasets.map(ds => ({
       label: ds.label,
-      data: ds.data.slice(-500) // Keep last 500 points max
+      data: ds.data.slice(-2880)
     }));
     const key = `atmosphere-chart-${sensorId}`;
     localStorage.setItem(key, JSON.stringify({
@@ -315,7 +316,7 @@ function createChart(sensorId, canvasId) {
           realtime: {
             duration: initialDurationMs,
             refresh: 1000, // Refresh every 1 second
-            delay: 3000, // 3 second delay for smoother display
+            delay: 6000, // 6 second delay for smoother display
             onRefresh: function(chart) {
               // Data is pushed in updateChart, nothing needed here
             }
