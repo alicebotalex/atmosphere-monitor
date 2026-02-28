@@ -601,26 +601,26 @@ async function deleteSensor(id) {
 
 // Time window control
 function refreshChartsTimeWindow() {
-  const durationMs = (preferences.chartTimeWindow || 60) * 60 * 1000;
+  const maxDurationMs = (preferences.chartTimeWindow || 60) * 60 * 1000;
   
   Object.keys(charts).forEach(sensorId => {
     const chart = charts[sensorId];
     if (chart) {
-      // When user manually sets time window, apply it directly
-      // and reset start time so progressive zoom uses this as the max
-      const xScale = chart.scales.x;
-      if (xScale && xScale.options.realtime) {
-        xScale.options.realtime.duration = durationMs;
-      }
-      if (chart.options.scales.x.realtime) {
-        chart.options.scales.x.realtime.duration = durationMs;
+      // Calculate duration based on actual data, capped at user's setting
+      const now = Date.now();
+      let targetDurationMs = maxDurationMs;
+      
+      if (chartStartTimes[sensorId]) {
+        // Duration = now - oldest data + buffer, capped at user's max
+        targetDurationMs = Math.min(now - chartStartTimes[sensorId] + 10000, maxDurationMs);
       }
       
-      // Reset start time - progressive zoom will grow up to the new max
-      if (chartStartTimes[sensorId]) {
-        // Adjust start time so current data span is maintained
-        const now = Date.now();
-        chartStartTimes[sensorId] = now - durationMs + 60000; // Start 1 min before current duration
+      const xScale = chart.scales.x;
+      if (xScale && xScale.options.realtime) {
+        xScale.options.realtime.duration = targetDurationMs;
+      }
+      if (chart.options.scales.x.realtime) {
+        chart.options.scales.x.realtime.duration = targetDurationMs;
       }
       
       chart.update();
