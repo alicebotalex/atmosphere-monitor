@@ -83,6 +83,34 @@ function loadChartData(sensorId, chart) {
       chartStartTimes[sensorId] = startTime;
     }
     
+    // Calculate proper duration to fit the data with no empty space
+    // Duration = now - oldest data point (so the window starts at the oldest data)
+    const firstDataset = data.find(ds => ds.data && ds.data.length > 0);
+    if (firstDataset && firstDataset.data.length > 0) {
+      const timestamps = firstDataset.data.map(d => d.x);
+      const minTime = Math.min(...timestamps);
+      const now = Date.now();
+      
+      // Duration is from oldest data to now, plus a small buffer
+      const dataSpanMs = now - minTime + 10000; // +10 sec buffer
+      
+      // Cap at user's setting
+      const maxDurationMs = (preferences.chartTimeWindow || 60) * 60 * 1000;
+      const targetDurationMs = Math.min(dataSpanMs, maxDurationMs);
+      
+      // Update start time for progressive zoom
+      chartStartTimes[sensorId] = minTime;
+      
+      // Update the chart's realtime scale
+      const xScale = chart.scales.x;
+      if (xScale && xScale.options.realtime) {
+        xScale.options.realtime.duration = targetDurationMs;
+      }
+      if (chart.options.scales.x.realtime) {
+        chart.options.scales.x.realtime.duration = targetDurationMs;
+      }
+    }
+    
     chart.update('none');
     return true;
   } catch (e) {
@@ -240,10 +268,10 @@ function updateChart(sensorId, data, timestamp) {
     dataset.data.push({ x: ts, y: value });
   });
   
-  // Progressive zoom: start at 1 min, grow to user's set window
+  // Progressive zoom: duration = now - oldest data point
   const maxDurationMs = (preferences.chartTimeWindow || 60) * 60 * 1000;
-  const elapsedMs = ts - chartStartTimes[sensorId] + 60000; // +1 min buffer
-  const targetDurationMs = Math.min(elapsedMs, maxDurationMs);
+  const now = Date.now();
+  const targetDurationMs = Math.min(now - chartStartTimes[sensorId] + 10000, maxDurationMs); // +10s buffer
   
   // Update duration as data grows
   const xScale = chart.scales.x;
