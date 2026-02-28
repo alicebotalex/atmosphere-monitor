@@ -1,3 +1,8 @@
+// Register streaming plugin with Chart.js
+if (typeof ChartStreaming !== 'undefined') {
+  Chart.register(ChartStreaming);
+}
+
 // State
 let sensors = [];
 let preferences = { cardOrder: [], metricToggles: {}, chartTimeWindow: 60 };
@@ -149,73 +154,19 @@ function updateSensorData(sensorDataArray) {
 }
 
 function updateChart(sensorId, data, timestamp) {
-  if (!chartData[sensorId]) {
-    chartData[sensorId] = {
-      labels: [],
-      timestamps: [],
-      PM1: [],
-      'PM2.5': [],
-      PM10: [],
-      'PB0.3': [],
-      'PB0.5': [],
-      'PB1': [],
-      'PB2.5': [],
-      'PB5': [],
-      'PB10': []
-    };
-  }
-  
-  const chartDataset = chartData[sensorId];
-  
-  // Add new data point
-  const time = formatChartTime(timestamp);
-  chartDataset.labels.push(time);
-  chartDataset.timestamps.push(timestamp);
-  chartDataset.PM1.push(data.PM1 || 0);
-  chartDataset['PM2.5'].push(data['PM2.5'] || 0);
-  chartDataset.PM10.push(data.PM10 || 0);
-  chartDataset['PB0.3'].push(data['PB0.3'] || 0);
-  chartDataset['PB0.5'].push(data['PB0.5'] || 0);
-  chartDataset.PB1.push(data.PB1 || 0);
-  chartDataset['PB2.5'].push(data['PB2.5'] || 0);
-  chartDataset.PB5.push(data.PB5 || 0);
-  chartDataset.PB10.push(data.PB10 || 0);
-  
-  // Apply time window filter
-  const timeWindowMs = (preferences.chartTimeWindow || 60) * 60 * 1000;
-  const now = Date.now();
-  const cutoffTime = now - timeWindowMs;
-  
-  // Find first index within time window
-  let startIndex = 0;
-  for (let i = 0; i < chartDataset.timestamps.length; i++) {
-    if (new Date(chartDataset.timestamps[i]).getTime() >= cutoffTime) {
-      startIndex = i;
-      break;
-    }
-  }
-  
-  // Trim old data
-  if (startIndex > 0) {
-    chartDataset.labels = chartDataset.labels.slice(startIndex);
-    chartDataset.timestamps = chartDataset.timestamps.slice(startIndex);
-    Object.keys(chartDataset).forEach(key => {
-      if (key !== 'labels' && key !== 'timestamps') {
-        chartDataset[key] = chartDataset[key].slice(startIndex);
-      }
-    });
-  }
-  
-  // Update chart with smoothed data
   const chart = charts[sensorId];
-  if (chart) {
-    chart.data.labels = chartDataset.labels;
-    chart.data.datasets.forEach(dataset => {
-      const rawData = chartDataset[dataset.label];
-      dataset.data = smoothData(rawData, 6); // ~30 seconds at 5sec polling
-    });
-    chart.update(); // Animate transitions
-  }
+  if (!chart) return;
+  
+  const ts = new Date(timestamp).getTime();
+  
+  // Push new data point to each dataset
+  chart.data.datasets.forEach(dataset => {
+    const value = data[dataset.label] || 0;
+    dataset.data.push({ x: ts, y: value });
+  });
+  
+  // Chart.js streaming plugin handles the scrolling automatically
+  chart.update('quiet');
 }
 
 function createChart(sensorId, canvasId) {
@@ -223,6 +174,7 @@ function createChart(sensorId, canvasId) {
   if (!ctx) return null;
   
   const toggles = preferences.metricToggles[sensorId] || {};
+  const durationMs = (preferences.chartTimeWindow || 60) * 60 * 1000;
   
   const datasets = [
     { label: 'PM1', data: [], borderColor: '#4a9eff', hidden: toggles.PM1 === false },
@@ -237,23 +189,23 @@ function createChart(sensorId, canvasId) {
   ].map(ds => ({
     ...ds,
     borderWidth: 2,
-    tension: 0.4,
+    tension: 0.3,
     pointRadius: 0,
     fill: false
   }));
   
   const chart = new Chart(ctx, {
     type: 'line',
-    data: { labels: [], datasets },
+    data: { datasets },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      animation: {
-        duration: 300 // Smooth 300ms transitions
-      },
       plugins: {
         legend: { display: false },
-        tooltip: { mode: 'index', intersect: false }
+        tooltip: { mode: 'index', intersect: false },
+        streaming: {
+          frameRate: 30 // Smooth 30fps scrolling
+        }
       },
       scales: {
         y: {
@@ -262,8 +214,28 @@ function createChart(sensorId, canvasId) {
           ticks: { color: '#b0b0b0' }
         },
         x: {
+          type: 'realtime',
+          realtime: {
+            duration: durationMs,
+            refresh: 1000, // Refresh every 1 second
+            delay: 2000, // 2 second delay for smoother display
+            onRefresh: function(chart) {
+              // Data is pushed in updateChart, nothing needed here
+            }
+          },
           grid: { color: '#444' },
-          ticks: { color: '#b0b0b0', maxTicksLimit: 10 }
+          ticks: { 
+            color: '#b0b0b0',
+            maxTicksLimit: 8,
+            callback: function(value) {
+              const date = new Date(value);
+              const timeWindow = preferences.chartTimeWindow || 60;
+              if (timeWindow <= 5) {
+                return date.toLocaleTimeString();
+              }
+              return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+            }
+          }
         }
       },
       interaction: {
@@ -500,35 +472,14 @@ async function deleteSensor(id) {
 
 // Time window control
 function refreshChartsTimeWindow() {
-  Object.keys(chartData).forEach(sensorId => {
-    const dataset = chartData[sensorId];
+  const durationMs = (preferences.chartTimeWindow || 60) * 60 * 1000;
+  
+  Object.keys(charts).forEach(sensorId => {
     const chart = charts[sensorId];
-    if (chart && dataset) {
-      const timeWindowMs = preferences.chartTimeWindow * 60 * 1000;
-      const now = Date.now();
-      const cutoffTime = now - timeWindowMs;
-      
-      let startIndex = 0;
-      for (let i = 0; i < dataset.timestamps.length; i++) {
-        if (new Date(dataset.timestamps[i]).getTime() >= cutoffTime) {
-          startIndex = i;
-          break;
-        }
-      }
-      
-      // Regenerate labels with current time format (seconds shown only for short windows)
-      const filteredTimestamps = dataset.timestamps.slice(startIndex);
-      const filteredLabels = filteredTimestamps.map(ts => formatChartTime(ts));
-      
-      // Also update stored labels for consistency
-      dataset.labels = dataset.timestamps.map(ts => formatChartTime(ts));
-      
-      chart.data.labels = filteredLabels;
-      chart.data.datasets.forEach(ds => {
-        const rawData = dataset[ds.label].slice(startIndex);
-        ds.data = smoothData(rawData, 6);
-      });
-      chart.update();
+    if (chart && chart.options.scales.x.realtime) {
+      // Update the realtime duration
+      chart.options.scales.x.realtime.duration = durationMs;
+      chart.update('none');
     }
   });
 }
