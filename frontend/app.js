@@ -143,25 +143,9 @@ function updateSensorData(sensorDataArray) {
       return;
     }
     
-    // Update current readings
-    updateReadings(id, data);
-    
     // Update chart
     updateChart(id, data, timestamp);
   });
-}
-
-function updateReadings(sensorId, data) {
-  const card = document.querySelector(`[data-sensor-id="${sensorId}"]`);
-  if (!card) return;
-  
-  const pm1 = card.querySelector('[data-metric="PM1"] .reading-value');
-  const pm25 = card.querySelector('[data-metric="PM2.5"] .reading-value');
-  const pm10 = card.querySelector('[data-metric="PM10"] .reading-value');
-  
-  if (pm1) pm1.textContent = data.PM1 || 0;
-  if (pm25) pm25.textContent = data['PM2.5'] || 0;
-  if (pm10) pm10.textContent = data.PM10 || 0;
 }
 
 function updateChart(sensorId, data, timestamp) {
@@ -345,24 +329,6 @@ function createSensorCard(sensor) {
       <div class="sensor-header">
         <div class="sensor-name">${sensor.name}</div>
         <span class="sensor-status"></span>
-      </div>
-      
-      <div class="sensor-readings">
-        <div class="reading" data-metric="PM1">
-          <div class="reading-label">PM1.0</div>
-          <div class="reading-value">--</div>
-          <div class="reading-unit">µg/m³</div>
-        </div>
-        <div class="reading" data-metric="PM2.5">
-          <div class="reading-label">PM2.5</div>
-          <div class="reading-value">--</div>
-          <div class="reading-unit">µg/m³</div>
-        </div>
-        <div class="reading" data-metric="PM10">
-          <div class="reading-label">PM10</div>
-          <div class="reading-value">--</div>
-          <div class="reading-unit">µg/m³</div>
-        </div>
       </div>
       
       <div class="chart-container">
