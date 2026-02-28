@@ -1,9 +1,28 @@
 // State
 let sensors = [];
-let preferences = { cardOrder: [], metricToggles: {} };
+let preferences = { cardOrder: [], metricToggles: {}, chartTimeWindow: 60 };
 let charts = {};
 let chartData = {};
 let ws = null;
+
+// Smoothing function - simple moving average
+function smoothData(data, windowSize = 6) {
+  if (data.length < windowSize) return data;
+  
+  const smoothed = [];
+  for (let i = 0; i < data.length; i++) {
+    if (i < windowSize - 1) {
+      // Not enough data yet, use what we have
+      const slice = data.slice(0, i + 1);
+      smoothed.push(slice.reduce((a, b) => a + b, 0) / slice.length);
+    } else {
+      // Full window available
+      const slice = data.slice(i - windowSize + 1, i + 1);
+      smoothed.push(slice.reduce((a, b) => a + b, 0) / slice.length);
+    }
+  }
+  return smoothed;
+}
 
 // WebSocket connection
 function connectWebSocket() {
@@ -116,6 +135,7 @@ function updateChart(sensorId, data, timestamp) {
   if (!chartData[sensorId]) {
     chartData[sensorId] = {
       labels: [],
+      timestamps: [],
       PM1: [],
       'PM2.5': [],
       PM10: [],
@@ -129,11 +149,11 @@ function updateChart(sensorId, data, timestamp) {
   }
   
   const chartDataset = chartData[sensorId];
-  const maxPoints = 60; // Keep last 60 readings
   
   // Add new data point
   const time = new Date(timestamp).toLocaleTimeString();
   chartDataset.labels.push(time);
+  chartDataset.timestamps.push(timestamp);
   chartDataset.PM1.push(data.PM1 || 0);
   chartDataset['PM2.5'].push(data['PM2.5'] || 0);
   chartDataset.PM10.push(data.PM10 || 0);
@@ -144,20 +164,38 @@ function updateChart(sensorId, data, timestamp) {
   chartDataset.PB5.push(data.PB5 || 0);
   chartDataset.PB10.push(data.PB10 || 0);
   
-  // Trim to max points
-  if (chartDataset.labels.length > maxPoints) {
-    chartDataset.labels.shift();
+  // Apply time window filter
+  const timeWindowMs = (preferences.chartTimeWindow || 60) * 60 * 1000;
+  const now = Date.now();
+  const cutoffTime = now - timeWindowMs;
+  
+  // Find first index within time window
+  let startIndex = 0;
+  for (let i = 0; i < chartDataset.timestamps.length; i++) {
+    if (new Date(chartDataset.timestamps[i]).getTime() >= cutoffTime) {
+      startIndex = i;
+      break;
+    }
+  }
+  
+  // Trim old data
+  if (startIndex > 0) {
+    chartDataset.labels = chartDataset.labels.slice(startIndex);
+    chartDataset.timestamps = chartDataset.timestamps.slice(startIndex);
     Object.keys(chartDataset).forEach(key => {
-      if (key !== 'labels') chartDataset[key].shift();
+      if (key !== 'labels' && key !== 'timestamps') {
+        chartDataset[key] = chartDataset[key].slice(startIndex);
+      }
     });
   }
   
-  // Update chart
+  // Update chart with smoothed data
   const chart = charts[sensorId];
   if (chart) {
     chart.data.labels = chartDataset.labels;
     chart.data.datasets.forEach(dataset => {
-      dataset.data = chartDataset[dataset.label];
+      const rawData = chartDataset[dataset.label];
+      dataset.data = smoothData(rawData, 6); // ~30 seconds at 5sec polling
     });
     chart.update('none'); // Update without animation for performance
   }
@@ -401,6 +439,12 @@ function renderSensorList() {
       <button class="btn btn-danger" onclick="deleteSensor(${sensor.id})">Delete</button>
     </div>
   `).join('');
+  
+  // Update time window select
+  const timeWindowSelect = document.getElementById('chartTimeWindow');
+  if (timeWindowSelect) {
+    timeWindowSelect.value = preferences.chartTimeWindow || 60;
+  }
 }
 
 document.getElementById('addSensorBtn').addEventListener('click', async () => {
@@ -451,6 +495,45 @@ async function deleteSensor(id) {
     alert('Failed to delete sensor: ' + error.message);
   }
 }
+
+// Time window control
+document.addEventListener('DOMContentLoaded', () => {
+  const timeWindowSelect = document.getElementById('chartTimeWindow');
+  if (timeWindowSelect) {
+    timeWindowSelect.addEventListener('change', (e) => {
+      preferences.chartTimeWindow = parseInt(e.target.value);
+      savePreferences();
+      
+      // Refresh all charts with new time window
+      Object.keys(chartData).forEach(sensorId => {
+        const dataset = chartData[sensorId];
+        const chart = charts[sensorId];
+        if (chart && dataset) {
+          // Reapply time filter
+          const timeWindowMs = preferences.chartTimeWindow * 60 * 1000;
+          const now = Date.now();
+          const cutoffTime = now - timeWindowMs;
+          
+          let startIndex = 0;
+          for (let i = 0; i < dataset.timestamps.length; i++) {
+            if (new Date(dataset.timestamps[i]).getTime() >= cutoffTime) {
+              startIndex = i;
+              break;
+            }
+          }
+          
+          const filteredLabels = dataset.labels.slice(startIndex);
+          chart.data.labels = filteredLabels;
+          chart.data.datasets.forEach(ds => {
+            const rawData = dataset[ds.label].slice(startIndex);
+            ds.data = smoothData(rawData, 6);
+          });
+          chart.update();
+        }
+      });
+    });
+  }
+});
 
 // Network Scan
 let scanResults = [];

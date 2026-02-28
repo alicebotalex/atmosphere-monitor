@@ -1,27 +1,66 @@
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 
-const dbPath = path.join(__dirname, '..', 'sensors.json');
+// New config directory location
+const configDir = path.join(os.homedir(), '.config', 'atmosphere-monitor');
+const dbPath = path.join(configDir, 'sensors.json');
+
+// Old location for migration
+const oldDbPath = path.join(__dirname, '..', 'sensors.json');
+
+// Ensure config directory exists
+function ensureConfigDir() {
+  if (!fs.existsSync(configDir)) {
+    fs.mkdirSync(configDir, { recursive: true });
+    console.log(`Created config directory: ${configDir}`);
+  }
+}
+
+// Migrate old database if it exists
+function migrateOldDatabase() {
+  if (fs.existsSync(oldDbPath) && !fs.existsSync(dbPath)) {
+    console.log('Migrating settings from project directory to ~/.config/atmosphere-monitor/');
+    fs.copyFileSync(oldDbPath, dbPath);
+    console.log(`Settings migrated to ${dbPath}`);
+    console.log('You can safely delete the old sensors.json from the project directory');
+  }
+}
 
 // Initialize database file
 function initDatabase() {
+  ensureConfigDir();
+  migrateOldDatabase();
+  
   if (!fs.existsSync(dbPath)) {
     const initialData = {
       sensors: [],
       preferences: {
         cardOrder: [],
-        metricToggles: {}
+        metricToggles: {},
+        chartTimeWindow: 60 // Default: 1 hour in minutes
       },
       nextId: 1
     };
     fs.writeFileSync(dbPath, JSON.stringify(initialData, null, 2));
+    console.log(`Initialized database at ${dbPath}`);
   }
 }
 
 function readDatabase() {
   try {
     const data = fs.readFileSync(dbPath, 'utf8');
-    return JSON.parse(data);
+    const db = JSON.parse(data);
+    
+    // Ensure preferences has chartTimeWindow
+    if (!db.preferences) {
+      db.preferences = { cardOrder: [], metricToggles: {}, chartTimeWindow: 60 };
+    }
+    if (db.preferences.chartTimeWindow === undefined) {
+      db.preferences.chartTimeWindow = 60;
+    }
+    
+    return db;
   } catch (error) {
     console.error('Error reading database:', error);
     initDatabase();
@@ -71,7 +110,7 @@ function deleteSensor(id) {
 // Preferences
 function getPreferences() {
   const db = readDatabase();
-  return db.preferences || { cardOrder: [], metricToggles: {} };
+  return db.preferences || { cardOrder: [], metricToggles: {}, chartTimeWindow: 60 };
 }
 
 function updatePreferences(preferences) {

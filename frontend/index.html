@@ -31,6 +31,20 @@
         <button class="close">&times;</button>
       </div>
       <div class="modal-body">
+        <h3>Chart Display</h3>
+        <div style="margin-bottom: 2rem;">
+          <label for="chartTimeWindow" style="display: block; margin-bottom: 0.5rem; color: var(--text-secondary);">
+            Time window:
+          </label>
+          <select id="chartTimeWindow" class="time-window-select">
+            <option value="15">15 minutes</option>
+            <option value="30">30 minutes</option>
+            <option value="60" selected>1 hour</option>
+            <option value="120">2 hours</option>
+            <option value="240">4 hours</option>
+          </select>
+        </div>
+        
         <h3>Sensors</h3>
         <div id="sensorList" class="sensor-list"></div>
         

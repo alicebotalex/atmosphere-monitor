@@ -281,6 +281,22 @@ h1 {
   color: var(--text-secondary);
 }
 
+.time-window-select {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  padding: 0.75rem;
+  border-radius: 4px;
+  font-size: 1rem;
+  width: 100%;
+  cursor: pointer;
+}
+
+.time-window-select:focus {
+  outline: none;
+  border-color: var(--accent-color);
+}
+
 .offline-message {
   text-align: center;
   padding: 2rem;
