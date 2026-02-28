@@ -214,7 +214,7 @@ function updateChart(sensorId, data, timestamp) {
       const rawData = chartDataset[dataset.label];
       dataset.data = smoothData(rawData, 6); // ~30 seconds at 5sec polling
     });
-    chart.update('none'); // Update without animation for performance
+    chart.update(); // Animate transitions
   }
 }
 
@@ -248,7 +248,9 @@ function createChart(sensorId, canvasId) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      animation: false, // Disable animation for smooth real-time updates
+      animation: {
+        duration: 300 // Smooth 300ms transitions
+      },
       plugins: {
         legend: { display: false },
         tooltip: { mode: 'index', intersect: false }
