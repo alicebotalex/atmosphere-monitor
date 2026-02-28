@@ -264,6 +264,7 @@ function createChart(sensorId, canvasId) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      animation: false, // Disable animation for smooth real-time updates
       plugins: {
         legend: { display: false },
         tooltip: { mode: 'index', intersect: false }

@@ -8,7 +8,7 @@ const sensorStatus = new Map();
 function fetchSensorData(ip) {
   return new Promise((resolve, reject) => {
     const url = `http://${ip}/cm?cmnd=Status%2010`;
-    const timeout = 3000;
+    const timeout = 1500; // 1.5 seconds - fast local network timeout
     
     const req = http.get(url, { timeout }, (res) => {
       let data = '';
@@ -46,22 +46,31 @@ function fetchSensorData(ip) {
   });
 }
 
-// Poll all sensors
+// Poll all sensors in parallel
 async function pollSensors() {
   const sensors = db.getSensors();
-  const results = [];
   
-  for (const sensor of sensors) {
-    const result = await fetchSensorData(sensor.ip);
-    sensorStatus.set(sensor.id, result);
-    
-    results.push({
+  // Fetch all sensors simultaneously
+  const fetchPromises = sensors.map(sensor => 
+    fetchSensorData(sensor.ip).then(result => ({
       id: sensor.id,
       name: sensor.name,
       ip: sensor.ip,
       ...result
+    }))
+  );
+  
+  const results = await Promise.all(fetchPromises);
+  
+  // Update status map
+  results.forEach(result => {
+    sensorStatus.set(result.id, {
+      online: result.online,
+      data: result.data,
+      timestamp: result.timestamp,
+      error: result.error
     });
-  }
+  });
   
   return results;
 }
