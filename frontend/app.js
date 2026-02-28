@@ -8,6 +8,7 @@ let sensors = [];
 let preferences = { cardOrder: [], metricToggles: {}, chartTimeWindow: 60 };
 let charts = {};
 let chartData = {};
+let chartStartTimes = {}; // Track when each chart first received data
 let ws = null;
 
 // Time window control constants
@@ -137,15 +138,29 @@ function updateSensorData(sensorDataArray) {
     }
     
     if (!online) {
-      // Show offline message
-      const card = document.querySelector(`[data-sensor-id="${id}"]`);
-      if (card) {
-        const chartContainer = card.querySelector('.chart-container');
-        if (chartContainer && !chartContainer.querySelector('.offline-message')) {
-          chartContainer.innerHTML = `<div class="offline-message">Sensor offline: ${error || 'Unknown error'}</div>`;
+      // Don't destroy the chart - just skip this data point
+      // The status indicator shows it's offline
+      // Chart will resume when sensor comes back online
+      console.log(`Sensor ${id} offline: ${error || 'Unknown error'}`);
+      return;
+    }
+    
+    // Remove any offline overlay if it exists (for backwards compatibility)
+    const card = document.querySelector(`[data-sensor-id="${id}"]`);
+    if (card) {
+      const offlineMsg = card.querySelector('.offline-message');
+      if (offlineMsg) {
+        offlineMsg.remove();
+        // Recreate the chart if it was destroyed
+        const canvasId = `chart-${id}`;
+        if (!document.getElementById(canvasId)) {
+          const chartContainer = card.querySelector('.chart-container');
+          if (chartContainer) {
+            chartContainer.innerHTML = `<canvas id="${canvasId}"></canvas>`;
+            charts[id] = createChart(id, canvasId);
+          }
         }
       }
-      return;
     }
     
     // Update chart
@@ -159,13 +174,31 @@ function updateChart(sensorId, data, timestamp) {
   
   const ts = new Date(timestamp).getTime();
   
+  // Track when this chart first received data
+  if (!chartStartTimes[sensorId]) {
+    chartStartTimes[sensorId] = ts;
+  }
+  
   // Push new data point to each dataset
   chart.data.datasets.forEach(dataset => {
     const value = data[dataset.label] || 0;
     dataset.data.push({ x: ts, y: value });
   });
   
-  // Chart.js streaming plugin handles the scrolling automatically
+  // Progressive zoom: start at 1 min, grow to user's set window
+  const maxDurationMs = (preferences.chartTimeWindow || 60) * 60 * 1000;
+  const elapsedMs = ts - chartStartTimes[sensorId] + 60000; // +1 min buffer
+  const targetDurationMs = Math.min(elapsedMs, maxDurationMs);
+  
+  // Update duration if it changed significantly (avoid constant updates)
+  const xScale = chart.scales.x;
+  if (xScale && xScale.options.realtime) {
+    const currentDuration = xScale.options.realtime.duration;
+    if (Math.abs(targetDurationMs - currentDuration) > 30000) { // Update if >30s difference
+      xScale.options.realtime.duration = targetDurationMs;
+    }
+  }
+  
   chart.update('quiet');
 }
 
@@ -174,7 +207,8 @@ function createChart(sensorId, canvasId) {
   if (!ctx) return null;
   
   const toggles = preferences.metricToggles[sensorId] || {};
-  const durationMs = (preferences.chartTimeWindow || 60) * 60 * 1000;
+  // Start with 1 minute, will grow progressively in updateChart
+  const initialDurationMs = 60 * 1000; // 1 minute
   
   const datasets = [
     { label: 'PM1', data: [], borderColor: '#4a9eff', hidden: toggles.PM1 === false },
@@ -200,6 +234,10 @@ function createChart(sensorId, canvasId) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      animation: {
+        duration: 400, // Smooth Y-axis animations
+        easing: 'easeOutQuart'
+      },
       plugins: {
         legend: { display: false },
         tooltip: { mode: 'index', intersect: false },
@@ -216,9 +254,9 @@ function createChart(sensorId, canvasId) {
         x: {
           type: 'realtime',
           realtime: {
-            duration: durationMs,
+            duration: initialDurationMs,
             refresh: 1000, // Refresh every 1 second
-            delay: 2000, // 2 second delay for smoother display
+            delay: 3000, // 3 second delay for smoother display
             onRefresh: function(chart) {
               // Data is pushed in updateChart, nothing needed here
             }
@@ -477,15 +515,23 @@ function refreshChartsTimeWindow() {
   Object.keys(charts).forEach(sensorId => {
     const chart = charts[sensorId];
     if (chart) {
-      // Update the realtime duration - need to update the scale options directly
+      // When user manually sets time window, apply it directly
+      // and reset start time so progressive zoom uses this as the max
       const xScale = chart.scales.x;
       if (xScale && xScale.options.realtime) {
         xScale.options.realtime.duration = durationMs;
       }
-      // Also update the chart options for future reference
       if (chart.options.scales.x.realtime) {
         chart.options.scales.x.realtime.duration = durationMs;
       }
+      
+      // Reset start time - progressive zoom will grow up to the new max
+      if (chartStartTimes[sensorId]) {
+        // Adjust start time so current data span is maintained
+        const now = Date.now();
+        chartStartTimes[sensorId] = now - durationMs + 60000; // Start 1 min before current duration
+      }
+      
       chart.update();
     }
   });
