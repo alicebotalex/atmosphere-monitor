@@ -5,6 +5,19 @@ let charts = {};
 let chartData = {};
 let ws = null;
 
+// Time window control constants
+const TIME_STEPS = [1, 2, 5, 10, 15, 30, 60, 120, 240]; // minutes
+
+function formatTimeValue(minutes) {
+  if (minutes < 60) return `${minutes}m`;
+  return `${minutes / 60}h`;
+}
+
+function getSliderIndexForMinutes(minutes) {
+  const idx = TIME_STEPS.indexOf(minutes);
+  return idx >= 0 ? idx : 5; // default to 30min if not found
+}
+
 // Smoothing function - simple moving average
 function smoothData(data, windowSize = 6) {
   if (data.length < windowSize) return data;
@@ -55,6 +68,14 @@ function handleWebSocketMessage(message) {
     case 'init':
       sensors = message.sensors;
       preferences = message.preferences;
+      // Sync header slider with loaded preferences
+      const timeSlider = document.getElementById('timeSlider');
+      const timeValueDisplay = document.getElementById('timeValue');
+      if (timeSlider && timeValueDisplay) {
+        const minutes = preferences.chartTimeWindow || 60;
+        timeSlider.value = getSliderIndexForMinutes(minutes);
+        timeValueDisplay.textContent = formatTimeValue(minutes);
+      }
       renderDashboard();
       break;
     
@@ -497,40 +518,75 @@ async function deleteSensor(id) {
 }
 
 // Time window control
+function refreshChartsTimeWindow() {
+  Object.keys(chartData).forEach(sensorId => {
+    const dataset = chartData[sensorId];
+    const chart = charts[sensorId];
+    if (chart && dataset) {
+      const timeWindowMs = preferences.chartTimeWindow * 60 * 1000;
+      const now = Date.now();
+      const cutoffTime = now - timeWindowMs;
+      
+      let startIndex = 0;
+      for (let i = 0; i < dataset.timestamps.length; i++) {
+        if (new Date(dataset.timestamps[i]).getTime() >= cutoffTime) {
+          startIndex = i;
+          break;
+        }
+      }
+      
+      const filteredLabels = dataset.labels.slice(startIndex);
+      chart.data.labels = filteredLabels;
+      chart.data.datasets.forEach(ds => {
+        const rawData = dataset[ds.label].slice(startIndex);
+        ds.data = smoothData(rawData, 6);
+      });
+      chart.update();
+    }
+  });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
+  // Header slider
+  const timeSlider = document.getElementById('timeSlider');
+  const timeValueDisplay = document.getElementById('timeValue');
+  
+  if (timeSlider && timeValueDisplay) {
+    // Initialize slider position from preferences
+    const currentMinutes = preferences.chartTimeWindow || 60;
+    timeSlider.value = getSliderIndexForMinutes(currentMinutes);
+    timeValueDisplay.textContent = formatTimeValue(currentMinutes);
+    
+    timeSlider.addEventListener('input', (e) => {
+      const minutes = TIME_STEPS[parseInt(e.target.value)];
+      timeValueDisplay.textContent = formatTimeValue(minutes);
+      preferences.chartTimeWindow = minutes;
+      
+      // Sync dropdown in settings
+      const timeWindowSelect = document.getElementById('chartTimeWindow');
+      if (timeWindowSelect) {
+        timeWindowSelect.value = minutes;
+      }
+      
+      savePreferences();
+      refreshChartsTimeWindow();
+    });
+  }
+  
+  // Settings dropdown (backup control)
   const timeWindowSelect = document.getElementById('chartTimeWindow');
   if (timeWindowSelect) {
     timeWindowSelect.addEventListener('change', (e) => {
       preferences.chartTimeWindow = parseInt(e.target.value);
-      savePreferences();
       
-      // Refresh all charts with new time window
-      Object.keys(chartData).forEach(sensorId => {
-        const dataset = chartData[sensorId];
-        const chart = charts[sensorId];
-        if (chart && dataset) {
-          // Reapply time filter
-          const timeWindowMs = preferences.chartTimeWindow * 60 * 1000;
-          const now = Date.now();
-          const cutoffTime = now - timeWindowMs;
-          
-          let startIndex = 0;
-          for (let i = 0; i < dataset.timestamps.length; i++) {
-            if (new Date(dataset.timestamps[i]).getTime() >= cutoffTime) {
-              startIndex = i;
-              break;
-            }
-          }
-          
-          const filteredLabels = dataset.labels.slice(startIndex);
-          chart.data.labels = filteredLabels;
-          chart.data.datasets.forEach(ds => {
-            const rawData = dataset[ds.label].slice(startIndex);
-            ds.data = smoothData(rawData, 6);
-          });
-          chart.update();
-        }
-      });
+      // Sync header slider
+      if (timeSlider && timeValueDisplay) {
+        timeSlider.value = getSliderIndexForMinutes(preferences.chartTimeWindow);
+        timeValueDisplay.textContent = formatTimeValue(preferences.chartTimeWindow);
+      }
+      
+      savePreferences();
+      refreshChartsTimeWindow();
     });
   }
 });
