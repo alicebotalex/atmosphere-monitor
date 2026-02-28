@@ -476,10 +476,17 @@ function refreshChartsTimeWindow() {
   
   Object.keys(charts).forEach(sensorId => {
     const chart = charts[sensorId];
-    if (chart && chart.options.scales.x.realtime) {
-      // Update the realtime duration
-      chart.options.scales.x.realtime.duration = durationMs;
-      chart.update('none');
+    if (chart) {
+      // Update the realtime duration - need to update the scale options directly
+      const xScale = chart.scales.x;
+      if (xScale && xScale.options.realtime) {
+        xScale.options.realtime.duration = durationMs;
+      }
+      // Also update the chart options for future reference
+      if (chart.options.scales.x.realtime) {
+        chart.options.scales.x.realtime.duration = durationMs;
+      }
+      chart.update();
     }
   });
 }
