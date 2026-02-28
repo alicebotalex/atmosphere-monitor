@@ -36,6 +36,60 @@ function formatChartTime(timestamp) {
   }
 }
 
+// LocalStorage functions for data persistence
+function saveChartData(sensorId, chart) {
+  try {
+    const data = chart.data.datasets.map(ds => ({
+      label: ds.label,
+      data: ds.data.slice(-500) // Keep last 500 points max
+    }));
+    const key = `atmosphere-chart-${sensorId}`;
+    localStorage.setItem(key, JSON.stringify({
+      data,
+      startTime: chartStartTimes[sensorId],
+      savedAt: Date.now()
+    }));
+  } catch (e) {
+    // localStorage might be full or unavailable
+    console.warn('Failed to save chart data:', e);
+  }
+}
+
+function loadChartData(sensorId, chart) {
+  try {
+    const key = `atmosphere-chart-${sensorId}`;
+    const saved = localStorage.getItem(key);
+    if (!saved) return false;
+    
+    const { data, startTime, savedAt } = JSON.parse(saved);
+    
+    // Only load if data is less than 4 hours old
+    if (Date.now() - savedAt > 4 * 60 * 60 * 1000) {
+      localStorage.removeItem(key);
+      return false;
+    }
+    
+    // Restore data to chart
+    data.forEach(savedDs => {
+      const chartDs = chart.data.datasets.find(ds => ds.label === savedDs.label);
+      if (chartDs) {
+        chartDs.data = savedDs.data;
+      }
+    });
+    
+    // Restore start time
+    if (startTime) {
+      chartStartTimes[sensorId] = startTime;
+    }
+    
+    chart.update('none');
+    return true;
+  } catch (e) {
+    console.warn('Failed to load chart data:', e);
+    return false;
+  }
+}
+
 // Smoothing function - simple moving average
 function smoothData(data, windowSize = 6) {
   if (data.length < windowSize) return data;
@@ -190,14 +244,19 @@ function updateChart(sensorId, data, timestamp) {
   const elapsedMs = ts - chartStartTimes[sensorId] + 60000; // +1 min buffer
   const targetDurationMs = Math.min(elapsedMs, maxDurationMs);
   
-  // Update duration if it changed significantly (avoid constant updates)
+  // Update duration as data grows
   const xScale = chart.scales.x;
   if (xScale && xScale.options.realtime) {
     const currentDuration = xScale.options.realtime.duration;
-    if (Math.abs(targetDurationMs - currentDuration) > 30000) { // Update if >30s difference
+    // Update if target is larger than current (growing) or if manually set smaller
+    if (targetDurationMs > currentDuration || targetDurationMs === maxDurationMs) {
       xScale.options.realtime.duration = targetDurationMs;
+      chart.options.scales.x.realtime.duration = targetDurationMs;
     }
   }
+  
+  // Persist chart data to localStorage for recovery on refresh
+  saveChartData(sensorId, chart);
   
   chart.update('quiet');
 }
@@ -283,6 +342,9 @@ function createChart(sensorId, canvasId) {
       }
     }
   });
+  
+  // Try to restore saved data from localStorage
+  loadChartData(sensorId, chart);
   
   return chart;
 }
